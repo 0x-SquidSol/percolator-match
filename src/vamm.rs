@@ -4070,7 +4070,10 @@ mod proofs {
     #[kani::unwind(1)]
     fn proof_passive_spread_never_negative() {
         let oracle: u64 = kani::any();
-        kani::assume(oracle > 0 && oracle <= 1_000_000_000_000); // max $1M
+        // the floor oracle*(1e4 - t)/1e4 is >= 1 for every allowed spread (t <= 9000) iff oracle >= 10;
+        // below that production refuses the passive bid (compute_passive_execution, vamm.rs:1535), it never fills at 0
+        // (proof_passive_zero_price_bid_refused).
+        kani::assume(oracle >= 10 && oracle <= 1_000_000_000_000); // max $1M
 
         let base_spread_bps: u32 = kani::any();
         let trading_fee_bps: u32 = kani::any();
@@ -4103,6 +4106,67 @@ mod proofs {
             sell_price > 0,
             "sell exec_price must always be > 0 for valid oracle"
         );
+    }
+
+    /// Proof 9b (v2.2 r2, batch-3 diag): the PRODUCTION passive quote (`compute_passive_execution`) never
+    /// fills a sell at price 0. For every oracle and allowed spread (base + fee <= max_total <= 9000, no skew),
+    /// a passive sell returns `Err(ArithmeticOverflow)` exactly when `oracle * (10_000 - total) < 10_000`
+    /// (the floor would be 0; the refusal at vamm.rs:1535), and otherwise `Ok` at exactly that floor, >= 1.
+    /// Liveness note (Info): passive sells are refused at oracle prices ~1..9 e6 units.
+    #[kani::proof]
+    #[kani::unwind(1)]
+    fn proof_passive_zero_price_bid_refused() {
+        let oracle: u64 = kani::any();
+        kani::assume(oracle > 0 && oracle <= 1_000_000_000_000);
+        let base_spread_bps: u32 = kani::any();
+        let trading_fee_bps: u32 = kani::any();
+        let max_total_bps: u32 = kani::any();
+        kani::assume(max_total_bps <= 9000);
+        kani::assume(base_spread_bps <= 1000 && trading_fee_bps <= 1000);
+        kani::assume(base_spread_bps + trading_fee_bps <= max_total_bps);
+        let fill: u64 = kani::any();
+        kani::assume(fill > 0);
+        let ctx = MatcherCtx {
+            magic: MATCHER_MAGIC,
+            version: MATCHER_VERSION,
+            kind: MatcherKind::Passive as u8,
+            _pad0: [0; 3],
+            lp_pda: [1; 32],
+            trading_fee_bps,
+            base_spread_bps,
+            max_total_bps,
+            impact_k_bps: 0,
+            liquidity_notional_e6: 0,
+            max_fill_abs: u128::MAX,
+            inventory_base: 0,
+            last_oracle_price_e6: 0,
+            last_exec_price_e6: 0,
+            max_inventory_abs: 0,
+            insurance_accrued_e6: 0,
+            fee_to_insurance_bps: 0,
+            skew_spread_mult_bps: 0,
+            _new_pad: [0; 4],
+            lp_account_id: 0,
+            insurance_fee_remainder_e6: 0,
+            backing_fee_cap_bps: 0,
+            _reserved: [0; 78],
+        };
+        let call = MatcherCall { req_id: 1, asset_index: 0, lp_account_id: 0, oracle_price_e6: oracle, req_size: -(fill as i128) };
+        let v3_units: bool = kani::any();
+        let r = compute_passive_execution(&ctx, &call, v3_units);
+        let total = (base_spread_bps as u128) + (trading_fee_bps as u128);
+        let num = (oracle as u128) * (10_000 - total);
+        if num < 10_000 {
+            assert!(r == Err(ProgramError::ArithmeticOverflow), "zero-price passive bid refused");
+            kani::cover!(true, "tiny oracle: sell refused, never filled at 0");
+        } else {
+            let (price, size, _) = r.unwrap();
+            assert_eq!(price as u128, num / 10_000);
+            assert!(price >= 1);
+            assert_eq!(size, -(fill as i128));
+            kani::cover!(oracle < 10, "small oracle still priced >= 1 at a low spread");
+            kani::cover!(oracle >= 10, "normal passive sell filled");
+        }
     }
 
     /// Proof 10: total_bps never exceeds max_total_bps.
