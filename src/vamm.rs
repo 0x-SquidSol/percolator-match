@@ -3811,6 +3811,8 @@ mod proofs {
             }
             // If checked_mul returns None, the program returns ArithmeticOverflow — safe.
         }
+        // r2 (amendment 2026-10-12 04:50): non-vacuity cover(s); no assume, assert, bound or fixture changed.
+        kani::cover!(abs_notional_e6.is_some_and(|n| (n / 1_000_000).checked_mul(impact_k_bps as u128).is_some_and(|x| x / liquidity_notional_e6 > 0)), "model-only: a non-zero impact is computed");
     }
 
     /// Proof 2: inventory_base after fill never exceeds max_inventory_abs.
@@ -3871,6 +3873,9 @@ mod proofs {
             new_inv,
             max_inv
         );
+        // r2 (amendment 2026-10-12 04:50): non-vacuity cover(s); no assume, assert, bound or fixture changed.
+        kani::cover!(fill_abs > 0 && fill_abs < fill_req, "fill clipped by the inventory limit");
+        kani::cover!(fill_abs == fill_req && fill_req > 0, "fill admitted in full");
     }
 
     /// Proof 3: insurance_accrued_e6 never exceeds (a fraction of) the trading fee
@@ -3958,6 +3963,8 @@ mod proofs {
             exec_price >= oracle as u128,
             "buy exec price must be >= oracle price"
         );
+        // r2 (amendment 2026-10-12 04:50): non-vacuity cover(s); no assume, assert, bound or fixture changed.
+        kani::cover!(exec_price > oracle as u128, "model-only: buy strictly above oracle");
     }
 
     /// Proof 5: sell exec_price <= oracle_price (LP charges spread on sells).
@@ -3977,6 +3984,8 @@ mod proofs {
             exec_price <= oracle as u128,
             "sell exec price must be <= oracle price"
         );
+        // r2 (amendment 2026-10-12 04:50): non-vacuity cover(s); no assume, assert, bound or fixture changed.
+        kani::cover!(exec_price > 0 && exec_price < oracle as u128, "model-only: sell strictly below oracle, non-zero");
     }
 
     /// Proof 6: inventory limit reduces fill when limit would be breached.
@@ -4007,6 +4016,9 @@ mod proofs {
             fill_abs <= fill_req,
             "fill must not exceed requested amount"
         );
+        // r2 (amendment 2026-10-12 04:50): non-vacuity cover(s); no assume, assert, bound or fixture changed.
+        kani::cover!(fill_abs < fill_req, "fill reduced");
+        kani::cover!(fill_abs == fill_req, "fill not reduced");
     }
 
     /// Proof 7: impact_bps monotonically increases with fill size.
@@ -4061,6 +4073,9 @@ mod proofs {
             extra <= 5000,
             "skew extra spread must be capped at 5000 bps"
         );
+        // r2 (amendment 2026-10-12 04:50): non-vacuity cover(s); no assume, assert, bound or fixture changed.
+        kani::cover!(extra > 0 && extra < 5000, "skew adds spread below the cap");
+        kani::cover!(extra == 5000, "cap binds");
     }
 
     /// Proof 9: passive spread never produces zero exec_price for valid oracle.
@@ -4190,6 +4205,8 @@ mod proofs {
             total_bps <= max_total,
             "total bps must never exceed max_total_bps"
         );
+        // r2 (amendment 2026-10-12 04:50): non-vacuity cover(s); no assume, assert, bound or fixture changed.
+        kani::cover!(total_bps == max_total && base + fee + skew_extra + impact > max_total, "model-only: the cap binds");
     }
 
     // =========================================================================
@@ -4221,6 +4238,8 @@ mod proofs {
                 );
             }
         }
+        // r2 (amendment 2026-10-12 04:50): non-vacuity cover(s); no assume, assert, bound or fixture changed.
+        kani::cover!(num.is_some_and(|n| n.checked_add(BPS_DENOM - 1).is_some_and(|r| r / BPS_DENOM > oracle_u128)), "model-only: ceil price strictly above oracle");
     }
 
     // =========================================================================
@@ -4273,5 +4292,7 @@ mod proofs {
             ctx_fill.validate().is_err(),
             "validate must reject max_fill_abs > i128::MAX"
         );
+        // r2 (amendment 2026-10-12 04:50): non-vacuity cover(s); no assume, assert, bound or fixture changed.
+        kani::cover!(ctx_inv.validate().is_err() && ctx_fill.validate().is_err(), "concrete harness: both rejections reached");
     }
 }
