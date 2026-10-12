@@ -4121,6 +4121,11 @@ mod proofs {
             sell_price > 0,
             "sell exec_price must always be > 0 for valid oracle"
         );
+        // r2 supplement (ledger 2026-10-12 "r2 S/M results"): non-vacuity cover; no assume, assert or bound changed.
+        kani::cover!(
+            total_bps > 0 && sell_price < oracle_u128 && buy_price > oracle_u128,
+            "model-only: a real spread, sell strictly below and buy strictly above the oracle"
+        );
     }
 
     /// Proof 9b (v2.2 r2, batch-3 diag): the PRODUCTION passive quote (`compute_passive_execution`) never
